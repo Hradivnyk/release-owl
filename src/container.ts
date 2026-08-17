@@ -1,6 +1,7 @@
 import knex from './platform/db/knex.js';
 import { config } from './platform/config/index.js';
 import logger from './platform/logger.js';
+import { NodeCronScheduler } from './platform/scheduler.js';
 import { RabbitMQBroker } from '@release-owl/platform';
 import { GithubService, FetchHttpClient } from './modules/github/index.js';
 import {
@@ -129,4 +130,5 @@ export const scannerService = new ScannerService(
   githubService,
   releaseHandler,
   logger,
+  new NodeCronScheduler(),
 );

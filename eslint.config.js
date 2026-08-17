@@ -6,6 +6,47 @@ import securityPlugin from 'eslint-plugin-security';
 import importPlugin from 'eslint-plugin-import-x';
 import globals from 'globals';
 
+// --- Architectural boundaries (fitness functions) ---------------------------
+// These complement the ts-arch tests (tests/architecture/) with the two rules
+// ts-arch cannot express. See docs/architecture-tests.md.
+
+// Feature modules under src/modules.
+const FEATURE_MODULES = [
+  'subscriptions',
+  'releases',
+  'sagas',
+  'outbox',
+  'github',
+  'notifications',
+];
+
+// Cross-module imports must go through the module's index.ts barrel. A sibling
+// module's internal file is imported as `../<module>/<file>`; the barrel is
+// `../<module>/index`. Using literal module names (not `*`) keeps `../../platform`
+// and other non-module relative imports from matching. Negations allow the barrel.
+const barrelOnlyPatterns = [
+  {
+    group: FEATURE_MODULES.flatMap((m) => [
+      `../${m}/*`,
+      `!../${m}/index.js`,
+      `!../${m}/index.ts`,
+    ]),
+    message:
+      'Import sibling feature modules only through their index.ts barrel, not their internal files.',
+  },
+];
+
+// Infrastructure libraries the application/domain layer must not import directly.
+const INFRA_LIBS = [
+  'express',
+  'knex',
+  'pg',
+  'amqplib',
+  '@grpc/grpc-js',
+  'nodemailer',
+  'node-cron',
+];
+
 export default tseslint.config(
   // only linting our own code, not what the build tools have generated.
   {
@@ -115,6 +156,41 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-return': 'off',
+    },
+  },
+
+  // Architectural boundary (invariant 7): cross-module imports only via the
+  // module's index.ts barrel. Applies to every module file.
+  {
+    files: ['src/modules/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        { patterns: barrelOnlyPatterns },
+      ],
+    },
+  },
+
+  // Architectural boundary (invariant 6): the application/domain layer must not
+  // import infrastructure libraries directly — depend on a port instead
+  // (e.g. src/platform/scheduler.ts wraps node-cron). Adapters (*.model.ts,
+  // *-notifier.ts) are intentionally excluded — they *are* the infrastructure.
+  // This block is more specific than the one above, so it re-states the barrel
+  // patterns to keep invariant 7 in force for service/orchestrator files too.
+  {
+    files: ['src/modules/**/*.service.ts', 'src/modules/**/*.orchestrator.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: INFRA_LIBS.map((name) => ({
+            name,
+            message:
+              'Application/domain layer must not import infrastructure libraries directly; depend on a port/abstraction (see src/platform).',
+          })),
+          patterns: barrelOnlyPatterns,
+        },
+      ],
     },
   },
 

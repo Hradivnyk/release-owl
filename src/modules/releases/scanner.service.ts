@@ -1,4 +1,3 @@
-import cron from 'node-cron';
 import { config } from '../../platform/config/index.js';
 import { scannerScanDurationSeconds } from '../../metrics/index.js';
 import type {
@@ -8,6 +7,7 @@ import type {
 import type { IGithubService } from '../github/index.js';
 import { GitHubRateLimitError } from '../github/index.js';
 import type { ILogger } from '../../platform/logger.js';
+import type { Scheduler } from '../../platform/scheduler.js';
 import type { ReleaseHandler } from './release.handler.js';
 
 function groupByRepo(
@@ -30,6 +30,7 @@ export class ScannerService {
     private readonly githubService: IGithubService,
     private readonly releaseHandler: ReleaseHandler,
     private readonly logger: ILogger,
+    private readonly scheduler: Scheduler,
   ) {}
 
   private async processRepo(
@@ -121,13 +122,7 @@ export class ScannerService {
   }
 
   start(): void {
-    if (!cron.validate(config.scanner.cronSchedule)) {
-      throw new Error(
-        `Invalid cron schedule: "${config.scanner.cronSchedule}". Check SCANNER_CRON_SCHEDULE in your .env file.`,
-      );
-    }
-
-    cron.schedule(config.scanner.cronSchedule, () => {
+    this.scheduler.schedule(config.scanner.cronSchedule, () => {
       this.scan().catch((err: unknown) => {
         this.logger.error(
           { event: 'scanner.unhandled_error', err },

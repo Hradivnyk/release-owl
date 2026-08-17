@@ -48,6 +48,7 @@ describe('ScannerService', () => {
       mockGithub,
       mockReleaseHandler,
       mockLogger,
+      { schedule: jest.fn() },
     );
   });
 

@@ -1,6 +1,6 @@
 import type { ILogger } from '@release-owl/platform';
 import type { IUnitOfWork } from '../../platform/db/unit-of-work.js';
-import type { ISubscriptionModel } from '../subscriptions/subscription.model.js';
+import type { ISubscriptionModel } from '../subscriptions/index.js';
 import type { ISagaModel } from './subscription-saga.model.js';
 
 export interface OrchestratorRetryConfig {

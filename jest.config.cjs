@@ -37,6 +37,13 @@ module.exports = {
     },
     {
       ...baseConfig,
+      displayName: 'arch',
+      testMatch: ['<rootDir>/tests/architecture/**/*.test.ts'],
+      // ts-arch analyses the real source graph; no env/DB setup needed.
+      setupFiles: [],
+    },
+    {
+      ...baseConfig,
       displayName: 'integration',
       testMatch: ['<rootDir>/tests/integration/**/*.test.ts'],
       globalSetup: '<rootDir>/tests/integration/global-setup.ts',

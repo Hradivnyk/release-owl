@@ -46,7 +46,8 @@
     "quality": "npm run lint && npm run format:check && npm run typecheck && npm run build",
     "ci": "npm run quality && npm run test",
     "test": "npm run test:unit && npm run test:integration:ci && npm run test:e2e:ci",
-    "test:unit": "jest --selectProjects unit notification platform",
+    "test:unit": "jest --selectProjects unit notification platform arch",
+    "test:arch": "jest --selectProjects arch",
     "test:unit:coverage": "npm run test:unit -- --coverage",
     "test:integration:ci": "node scripts/run-with-compose.cjs -f docker-compose.test.yml -- jest --selectProjects integration --runInBand",
     "test:integration:coverage": "npm run test:integration:ci -- --coverage",
@@ -89,6 +90,7 @@
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.9",
     "ts-proto": "^2.11.8",
+    "tsarch": "^5.4.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.59.1"

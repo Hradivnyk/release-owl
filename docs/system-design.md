@@ -13,6 +13,7 @@
 
 **Detailed docs:**
 
+- [Architecture (C4)](architecture.md) — context / container / component diagrams
 - [Orchestrated Saga](saga.md) — sequence diagrams, compensation, idempotency
 - [Data Model](data-model.md) — schemas, ER diagram, migrations
 - [Observability](observability.md) — logging, metrics, alerting
