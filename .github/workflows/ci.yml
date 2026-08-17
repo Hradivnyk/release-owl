@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  packages: write # push app/notification images to GHCR
 
 jobs:
   quality:
@@ -117,11 +118,62 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_WEBSERVER: 1
 
+  build-images:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [quality, test-unit, test-integration, test-e2e]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    outputs:
+      prefix: ${{ steps.meta.outputs.prefix }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      # GHCR requires lowercase repository paths; the org name is mixed-case.
+      - name: Resolve image prefix
+        id: meta
+        run: echo "prefix=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push app
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.prefix }}/app:${{ github.sha }}
+            ${{ steps.meta.outputs.prefix }}/app:latest
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,mode=max,scope=app
+
+      - name: Build and push notification
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/notification/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.prefix }}/notification:${{ github.sha }}
+            ${{ steps.meta.outputs.prefix }}/notification:latest
+          cache-from: type=gha,scope=notification
+          cache-to: type=gha,mode=max,scope=notification
+
   deploy:
-    name: Deploy to EC2
+    name: Deploy to Hetzner
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [quality, test-unit, test-integration, test-e2e]
+    needs: [build-images]
     # Deploy only on a real push to main (i.e. after a PR is merged),
     # not on pull_request events which also target main.
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -129,12 +181,26 @@ jobs:
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
+        env:
+          IMAGE_PREFIX: ${{ needs.build-images.outputs.prefix }}
+          IMAGE_TAG: ${{ github.sha }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          # Values passed through to the remote shell; without this they are
+          # not visible inside the script.
+          envs: IMAGE_PREFIX,IMAGE_TAG,GHCR_USER,GHCR_TOKEN
           script: |
-            cd ${{ secrets.EC2_WORK_DIR }}
+            set -e
+            cd ${{ secrets.DEPLOY_WORK_DIR }}
             git pull origin main
-            docker compose --profile production up -d --build
+            # Needed only while the GHCR packages are private.
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            # Shell variables win over .env, so the exact SHA built above is used.
+            export IMAGE_PREFIX IMAGE_TAG
+            docker compose pull app notification
+            docker compose --profile production up -d
             docker image prune -f

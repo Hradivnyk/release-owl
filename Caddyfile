@@ -24,3 +24,10 @@
         reverse_proxy app:3000
     }
 }
+
+# Second project on the same host: ustriy-system. Its own nginx keeps the rate
+# limiting and /api routing, listens on 8080 inside the shared `edge` network,
+# and Caddy terminates TLS for it. Caddy sets X-Forwarded-* automatically.
+{$USTRIY_DOMAIN} {
+    reverse_proxy ustriy-nginx:8080
+}

@@ -3,6 +3,13 @@ services:
     ports:
       - '3000:3000'
 
+  # Publish the notification transports so ghz (gRPC) and autocannon (REST)
+  # can hit them from the host. Not published in production.
+  notification:
+    ports:
+      - '50051:50051'
+      - '4000:4000'
+
   db:
     ports:
       - '5432:5432'

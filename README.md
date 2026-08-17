@@ -34,7 +34,7 @@ Users subscribe with their **email** and a GitHub **`owner/repo`** slug. The ser
 | Linting / Formatting | ESLint, Prettier, Husky + lint-staged |
 | Containerisation | Docker (multi-stage, Alpine), Docker Compose, Caddy (TLS reverse proxy) |
 | Logging & Observability | Pino (JSON logs), Filebeat (log shipping), Elasticsearch (storage), Kibana (UI) |
-| CI/CD | GitHub Actions → deploy to EC2 via Docker Compose production profile |
+| CI/CD | GitHub Actions → images pushed to GHCR → deployed over SSH via Docker Compose production profile |
 
 ---
 
@@ -149,15 +149,43 @@ To enable HTTPS via Caddy (set `DOMAIN` in `.env` first):
 docker compose --profile production up --build
 ```
 
+### Production deployment
+
+Images are built by GitHub Actions and pushed to GHCR; the server only pulls
+them, so a 2 GB VPS is enough to deploy (no compilation on the host).
+
+One-time host setup:
+
+```bash
+docker network create edge
+```
+
+The `edge` network is shared with the [ustriy-system](https://github.com/Hradivnyk/ustriy-system)
+stack: this project's Caddy terminates TLS for both domains, so only one service
+binds ports 80/443. Set `USTRIY_DOMAIN` in `.env` (or leave the default if that
+project is not deployed here) and `IMAGE_PREFIX=ghcr.io/<owner>/<repo>`.
+
+Required GitHub secrets: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_WORK_DIR`.
+`IMAGE_TAG` is passed automatically as the commit SHA, so rolling back is
+`IMAGE_TAG=<sha> docker compose --profile production up -d`.
+
 ### Logging (ELK Stack)
 
-The stack includes Filebeat → Elasticsearch → Kibana for log aggregation.
+The stack includes Filebeat → Elasticsearch → Kibana for log aggregation, gated
+behind the `observability` profile so the default stack stays under ~1.5 GB RAM
+and fits on a small VPS. Starting the profile adds roughly 1.5–2 GB.
+
+```bash
+docker compose --profile observability up -d
+```
+
+While the profile is stopped, `/kibana` returns 502 — everything else is unaffected.
 
 **Local development** — Kibana UI is available at `http://localhost:5601` when using the override file:
 
 ```bash
 cp docker-compose.override.yml.example docker-compose.override.yml
-docker compose up --build
+docker compose --profile observability up --build
 ```
 
 **Production** — Kibana is accessible at `https://<DOMAIN>/kibana` and is protected by basic auth. No extra DNS configuration is needed. Set `KIBANA_USER` and `KIBANA_HASHED_PASSWORD` in `.env`:

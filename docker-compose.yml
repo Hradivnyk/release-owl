@@ -1,6 +1,10 @@
 services:
   app:
     build: .
+    # Both `build` and `image` are set on purpose: locally `up --build` builds and
+    # tags the image, while in production the CI-built image is pulled from GHCR.
+    # IMAGE_PREFIX/IMAGE_TAG come from .env on the server (see README → Deployment).
+    image: ${IMAGE_PREFIX:-release-owl}/app:${IMAGE_TAG:-local}
     env_file: .env
     environment:
       NODE_ENV: production
@@ -23,6 +27,7 @@ services:
     build:
       context: .
       dockerfile: services/notification/Dockerfile
+    image: ${IMAGE_PREFIX:-release-owl}/notification:${IMAGE_TAG:-local}
     env_file: .env
     environment:
       NODE_ENV: production
@@ -31,9 +36,9 @@ services:
       HEALTH_PORT: 3002
       GRPC_PORT: 50051
       REST_PORT: 4000
-    ports:
-      - '50051:50051' # gRPC — used by the app when NOTIFIER=grpc and for ghz benchmarks
-      - '4000:4000' # REST  — used by the app when NOTIFIER=rest and for autocannon benchmarks
+    # gRPC (50051) and REST (4000) are reachable inside the compose network by
+    # service name; they are not published to the host. To run ghz/autocannon
+    # benchmarks locally, publish them via docker-compose.override.yml.
     depends_on:
       rabbitmq:
         condition: service_healthy # wait for the broker before consuming
@@ -91,12 +96,18 @@ services:
       - caddy_config:/config
     environment:
       DOMAIN: ${DOMAIN:-localhost}
+      # Second site served by this Caddy: the ustriy-system stack, which joins
+      # the shared `edge` network and exposes its nginx on port 8080.
+      USTRIY_DOMAIN: ${USTRIY_DOMAIN:-ustriy.localhost}
       GRAFANA_USER: ${GRAFANA_USER:-admin}
       GRAFANA_HASHED_PASSWORD: ${GRAFANA_HASHED_PASSWORD}
       KIBANA_USER: ${KIBANA_USER:-kibana}
       KIBANA_HASHED_PASSWORD: ${KIBANA_HASHED_PASSWORD}
     depends_on:
       - app
+    networks:
+      - default # reach app, grafana, kibana
+      - edge # reach the ustriy-system stack
     restart: unless-stopped
 
   db:
@@ -116,10 +127,13 @@ services:
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    profiles: [observability]
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      # 256m heap keeps the whole ELK profile under ~2 GB so it can be started
+      # on demand on a small VPS. Raise to 512m if you index heavier workloads.
+      - ES_JAVA_OPTS=-Xms256m -Xmx256m
     volumes:
       - es_data:/usr/share/elasticsearch/data
     restart: unless-stopped
@@ -136,7 +150,9 @@ services:
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
+    profiles: [observability]
     environment:
+      - NODE_OPTIONS=--max-old-space-size=512
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
       - SERVER_BASEPATH=/kibana
       - SERVER_REWRITEBASEPATH=true
@@ -161,6 +177,7 @@ services:
 
   es-init:
     image: curlimages/curl:8.7.1
+    profiles: [observability]
     volumes:
       - ./elasticsearch/init-template.sh:/etc/elasticsearch/init-template.sh:ro
       - ./elasticsearch/index-template.json:/etc/elasticsearch/index-template.json:ro
@@ -175,6 +192,7 @@ services:
 
   filebeat:
     image: docker.elastic.co/beats/filebeat:8.13.4
+    profiles: [observability]
     user: root
     command: filebeat -e --strict.perms=false
     volumes:
@@ -227,6 +245,13 @@ services:
     depends_on:
       - app
     restart: unless-stopped
+
+# Shared with the ustriy-system stack so a single Caddy can terminate TLS for
+# both projects on one host. Create it once: docker network create edge
+# Only the `production` profile attaches to it.
+networks:
+  edge:
+    external: true
 
 volumes:
   postgres_data:
