@@ -6,6 +6,10 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-postgres}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672
+      # Notifier transport: broker (default) | rest | grpc
+      NOTIFIER: ${NOTIFIER:-broker}
+      NOTIFICATION_GRPC_URL: notification:50051
+      NOTIFICATION_REST_URL: http://notification:4000
     depends_on:
       db:
         condition: service_healthy # wait for DB to be ready
@@ -25,6 +29,11 @@ services:
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672
       DATABASE_URL: postgresql://${NOTIFICATION_POSTGRES_USER:-postgres}:${NOTIFICATION_POSTGRES_PASSWORD:-postgres}@notification-db:5432/${NOTIFICATION_POSTGRES_DB:-notification_db}
       HEALTH_PORT: 3002
+      GRPC_PORT: 50051
+      REST_PORT: 4000
+    ports:
+      - '50051:50051' # gRPC — used by the app when NOTIFIER=grpc and for ghz benchmarks
+      - '4000:4000' # REST  — used by the app when NOTIFIER=rest and for autocannon benchmarks
     depends_on:
       rabbitmq:
         condition: service_healthy # wait for the broker before consuming

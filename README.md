@@ -218,3 +218,104 @@ See [`.env.example`](.env.example) for the full reference. Key variables:
 | `SCANNER_CRON_SCHEDULE` | No | Cron expression for release checks (default: `0 * * * *`) |
 | `KIBANA_USER` | No | Username for Kibana basic auth (production only) |
 | `KIBANA_HASHED_PASSWORD` | No | Bcrypt-hashed password for Kibana (generate with `caddy hash-password`) |
+
+---
+
+## gRPC Transport (HW10)
+
+### Overview
+
+Release notification emails (sent by the scanner when a new GitHub release is published)
+can be delivered via three transports, selected by the `NOTIFIER` env var on the **app** service:
+
+| `NOTIFIER` | Transport | Notes |
+|---|---|---|
+| `broker` *(default)* | Async RabbitMQ `email.requested` → Saga | Full distributed transaction; confirmation email delivery guaranteed via transactional outbox. |
+| `grpc` | Synchronous gRPC `NotificationService/Notify` | Caller blocks until email is sent or an error is returned. Bypasses the Saga. |
+| `rest` | Synchronous HTTP `POST /api/notify` | REST baseline for comparison; same semantics as gRPC. Bypasses the Saga. |
+
+The broker path and Saga are **unchanged** — `broker` remains the default and all existing subscription flows continue to work exactly as before.
+
+### Proto Contract
+
+Located at `packages/proto/proto/releaseowl/notification/v1/notification.proto`.
+Generated TypeScript stubs live at `packages/proto/src/gen/` (committed; regenerate with `npm run generate`).
+
+```protobuf
+service NotificationService {
+  rpc Notify(NotifyRequest) returns (NotifyResponse);
+}
+```
+
+`NotifyRequest` carries a `oneof kind` — either `ConfirmationEmail` or `NotificationEmail`.
+
+### gRPC Status Codes
+
+| Situation | gRPC code |
+|---|---|
+| Missing / empty `kind` | `INVALID_ARGUMENT` |
+| Missing required field (`email`, `repo`, …) | `INVALID_ARGUMENT` |
+| Transient SMTP / network failure (`ECONNREFUSED`, `ETIMEDOUT`, …) | `UNAVAILABLE` |
+| Any other send failure | `INTERNAL` |
+| Success | `OK` (empty `NotifyResponse`) |
+
+### Switching to gRPC
+
+```bash
+# Start with gRPC transport enabled
+NOTIFIER=grpc docker compose up --build
+
+# Verify with grpcurl (install: brew install grpcurl)
+grpcurl -plaintext \
+  -d '{"notification":{"email":"a@b.com","repo":"owner/repo","tagName":"v1","unsubscribeToken":"tok"}}' \
+  localhost:50051 releaseowl.notification.v1.NotificationService/Notify
+```
+
+### buf
+
+```bash
+# Lint proto
+npx buf lint
+
+# Regenerate TypeScript stubs (requires @bufbuild/buf + ts-proto devDeps)
+npm run generate
+```
+
+---
+
+## gRPC vs REST Throughput Benchmark
+
+Both paths are benchmarked with `EMAIL_SENDER=stub` (no-op sender) so that SMTP latency does not distort the transport comparison.
+
+### Setup
+
+```bash
+# 1. Start only the notification service with stub sender and ports exposed
+EMAIL_SENDER=stub docker compose up -d notification
+
+# 2. Install ghz (binary, not npm): https://ghz.sh/
+#    macOS: brew install ghz
+#    Linux: download from https://github.com/bojand/ghz/releases
+
+# 3. Run benchmarks (from repo root)
+sh bench/bench-grpc.sh    # gRPC  — 20 000 requests, 50 concurrent
+sh bench/bench-rest.sh    # REST  — 20 000 requests, 50 concurrent
+```
+
+### Results
+
+> Measured on Apple M2 Pro, Node.js 20, Docker Desktop (mac), `EMAIL_SENDER=stub`.
+> Your numbers will vary; re-run with the scripts above.
+
+| Metric | gRPC | REST |
+|---|---|---|
+| Requests/sec | — | — |
+| Latency p50 | — | — |
+| Latency p95 | — | — |
+| Latency p99 | — | — |
+
+*(Fill in after running `bench/bench-grpc.sh` and `bench/bench-rest.sh`.)*
+
+**Expected trade-offs:** gRPC uses HTTP/2 multiplexing and binary Protocol Buffers encoding,
+which typically yields lower per-request overhead at high concurrency compared to HTTP/1.1 + JSON.
+With a stub sender the difference is dominated by serialisation and transport framing rather than I/O.

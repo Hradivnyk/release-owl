@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
-language: uk-UA
+language: en-US
 tone_instructions: 'Be concise and to the point. Back up suggestions with reasoning.'
 early_access: true
 reviews:

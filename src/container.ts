@@ -3,7 +3,12 @@ import { config } from './platform/config/index.js';
 import logger from './platform/logger.js';
 import { RabbitMQBroker } from '@release-owl/platform';
 import { GithubService, FetchHttpClient } from './modules/github/index.js';
-import { BrokerNotifier } from './modules/notifications/index.js';
+import {
+  BrokerNotifier,
+  GrpcNotifier,
+  RestNotifier,
+  type Notifier,
+} from './modules/notifications/index.js';
 import { SubscriptionModel } from './modules/subscriptions/subscription.model.js';
 import { RepositoryModel } from './modules/subscriptions/repository.model.js';
 import { SubscriptionService } from './modules/subscriptions/subscription.service.js';
@@ -28,7 +33,41 @@ const githubService = new GithubService(
 
 export const broker = new RabbitMQBroker(config.rabbitmq.url, logger);
 
-const notifier = new BrokerNotifier(broker);
+/**
+ * Selects the Notifier implementation based on the NOTIFIER env var.
+ *
+ *   broker (default) — async RabbitMQ publish; drives the email Saga.
+ *   rest             — synchronous HTTP POST /api/notify (hw7 baseline).
+ *   grpc             — synchronous gRPC call to NotificationService.
+ *
+ * gRPC and REST both bypass the Saga; the broker path stays the default so
+ * existing subscribe / release flows are unchanged.
+ */
+function createNotifier(): Notifier {
+  switch (config.notification.notifier) {
+    case 'rest':
+      return new RestNotifier(
+        {
+          baseUrl: config.notification.restUrl,
+          timeoutMs: config.notification.timeoutMs,
+        },
+        logger,
+      );
+    case 'grpc':
+      return new GrpcNotifier(
+        {
+          grpcUrl: config.notification.grpcUrl,
+          timeoutMs: config.notification.timeoutMs,
+        },
+        logger,
+      );
+    case 'broker':
+    default:
+      return new BrokerNotifier(broker);
+  }
+}
+
+const notifier = createNotifier();
 
 const repositoryModel = new RepositoryModel(knex);
 const subscriptionModel = new SubscriptionModel(knex, repositoryModel);

@@ -10,16 +10,21 @@
     "migrate": "tsx src/migrate.ts"
   },
   "dependencies": {
+    "@grpc/grpc-js": "*",
     "@release-owl/contracts": "*",
     "@release-owl/platform": "*",
+    "@release-owl/proto": "*",
     "dotenv": "*",
+    "express": "*",
     "knex": "*",
     "nodemailer": "*",
     "pg": "*",
     "pino": "*",
-    "pino-pretty": "*"
+    "pino-pretty": "*",
+    "zod": "*"
   },
   "devDependencies": {
+    "@types/express": "*",
     "@types/node": "*",
     "@types/nodemailer": "*",
     "@types/pg": "*",

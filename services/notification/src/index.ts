@@ -1,9 +1,12 @@
 import 'dotenv/config';
 import http from 'node:http';
+import { ServerCredentials } from '@grpc/grpc-js';
 import {
   broker,
   emailRequestedConsumer,
   outboxRelay,
+  grpcServer,
+  restApp,
   knex,
 } from './container.js';
 import { config } from './config.js';
@@ -17,6 +20,7 @@ async function start(): Promise<void> {
   outboxRelay.start();
   await emailRequestedConsumer.start();
 
+  // ── Health server (node:http, existing) ──────────────────────────────────
   const healthServer = http.createServer((_req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'ok' }));
@@ -32,6 +36,33 @@ async function start(): Promise<void> {
       );
       resolve();
     });
+  });
+
+  // ── gRPC server ──────────────────────────────────────────────────────────
+  await new Promise<void>((resolve, reject) => {
+    grpcServer.bindAsync(
+      `0.0.0.0:${config.grpc.port.toString()}`,
+      ServerCredentials.createInsecure(),
+      (err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        logger.info(
+          { event: 'grpc.started', port: config.grpc.port },
+          'gRPC server started',
+        );
+        resolve();
+      },
+    );
+  });
+
+  // ── Synchronous REST server ───────────────────────────────────────────────
+  const restServer = restApp.listen(config.rest.port, () => {
+    logger.info(
+      { event: 'rest.started', port: config.rest.port },
+      'REST server started',
+    );
   });
 
   logger.info({ event: 'service.started' }, 'Notification service started');
@@ -52,21 +83,34 @@ async function start(): Promise<void> {
 
     outboxRelay.stop();
 
-    healthServer.close(() => {
-      emailRequestedConsumer.stop();
-      broker
-        .close()
-        .then(async () => knex.destroy())
-        .then(() => {
-          clearTimeout(timer);
-          process.exit(code);
-        })
-        .catch((err: unknown) => {
-          clearTimeout(timer);
-          logger.error({ err }, 'Error during shutdown');
-          process.exit(1);
-        });
+    const grpcDone = new Promise<void>((resolve) => {
+      grpcServer.tryShutdown((grpcErr) => {
+        if (grpcErr) logger.error({ err: grpcErr }, 'gRPC shutdown error');
+        resolve();
+      });
     });
+    const restDone = new Promise<void>((resolve) => {
+      restServer.close(() => resolve());
+    });
+    const healthDone = new Promise<void>((resolve) => {
+      healthServer.close(() => resolve());
+    });
+
+    Promise.all([grpcDone, restDone, healthDone])
+      .then(async () => {
+        emailRequestedConsumer.stop();
+        return broker.close();
+      })
+      .then(async () => knex.destroy())
+      .then(() => {
+        clearTimeout(timer);
+        process.exit(code);
+      })
+      .catch((err: unknown) => {
+        clearTimeout(timer);
+        logger.error({ err }, 'Error during shutdown');
+        process.exit(1);
+      });
   }
 
   process.on('SIGTERM', () => {

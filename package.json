@@ -8,8 +8,10 @@
     "services/*"
   ],
   "dependencies": {
+    "@grpc/grpc-js": "^1.14.4",
     "@release-owl/contracts": "*",
     "@release-owl/platform": "*",
+    "@release-owl/proto": "*",
     "cors": "^2.8.6",
     "dotenv": "^17.4.1",
     "express": "^5.2.1",
@@ -29,7 +31,8 @@
   "scripts": {
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "build:packages": "tsc -p packages/contracts/tsconfig.json && tsc -p packages/platform/tsconfig.json",
+    "build:packages": "tsc -p packages/contracts/tsconfig.json && tsc -p packages/platform/tsconfig.json && tsc -p packages/proto/tsconfig.json",
+    "generate": "buf generate",
     "build": "npm run build:packages && tsc",
     "build:services": "npm run build:packages && tsc -p services/notification/tsconfig.json",
     "migrate": "tsx src/migrate.ts",
@@ -54,11 +57,12 @@
   },
   "lint-staged": {
     "**/*.{ts,js,cjs,mjs}": [
-      "eslint --fix --max-warnings 0",
+      "eslint --fix --max-warnings 0 --no-warn-ignored",
       "prettier --write"
     ]
   },
   "devDependencies": {
+    "@bufbuild/buf": "^1.71.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.60.0",
     "@types/cors": "^2.8.19",
@@ -84,6 +88,7 @@
     "prettier": "^3.8.1",
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.9",
+    "ts-proto": "^2.11.8",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.59.1"

@@ -118,7 +118,7 @@ describe('EmailRequestedConsumer — confirmation (saga)', () => {
     // Should NOT throw: failure is handled by enqueuing email.failed
     await broker.publish(EMAIL_REQUESTED, {
       type: 'confirmation',
-      event_id: 'evt-2',
+      event_id: 'evt-1',
       email: 'a@b.com',
       repo: 'owner/repo',
       confirm_token: 'tok',
@@ -149,7 +149,7 @@ describe('EmailRequestedConsumer — confirmation (saga)', () => {
     await buildConsumer(broker, notifier, inbox, outbox, uow).start();
     await broker.publish(EMAIL_REQUESTED, {
       type: 'confirmation',
-      event_id: 'evt-3',
+      event_id: 'evt-1',
       email: 'a@b.com',
       repo: 'owner/repo',
       confirm_token: 'tok',
@@ -175,7 +175,7 @@ describe('EmailRequestedConsumer — confirmation (saga)', () => {
     await buildConsumer(broker, notifier, inbox, outbox, uow).start();
     await broker.publish(EMAIL_REQUESTED, {
       type: 'confirmation',
-      event_id: 'evt-4',
+      event_id: 'evt-1',
       email: 'a@b.com',
       repo: 'owner/repo',
       confirm_token: 'tok',
@@ -201,7 +201,7 @@ describe('EmailRequestedConsumer — confirmation (saga)', () => {
     await buildConsumer(broker, notifier, inbox, outbox, uow).start();
     await broker.publish(EMAIL_REQUESTED, {
       type: 'confirmation',
-      event_id: 'evt-5',
+      event_id: 'evt-1',
       email: 'a@b.com',
       repo: 'owner/repo',
       confirm_token: 'tok',
@@ -232,7 +232,7 @@ describe('EmailRequestedConsumer — notification (fire-and-forget)', () => {
     await buildConsumer(broker, notifier, inbox, outbox, uow).start();
     await broker.publish(EMAIL_REQUESTED, {
       type: 'notification',
-      event_id: 'evt-6',
+      event_id: 'evt-2',
       email: 'a@b.com',
       repo: 'owner/repo',
       tag_name: 'v1',
@@ -250,6 +250,30 @@ describe('EmailRequestedConsumer — notification (fire-and-forget)', () => {
     expect(outbox.enqueue).not.toHaveBeenCalled();
   });
 
+  it('skips a duplicate notification event without sending a second email', async () => {
+    const broker = new InMemoryBroker();
+    const notifier = fakeNotifier();
+    const inbox = fakeInbox();
+    const outbox = fakeOutbox();
+    const uow = fakeUow();
+
+    await buildConsumer(broker, notifier, inbox, outbox, uow).start();
+
+    const payload = {
+      type: 'notification' as const,
+      event_id: 'evt-dup',
+      email: 'a@b.com',
+      repo: 'owner/repo',
+      tag_name: 'v1',
+      unsubscribe_token: 'tok',
+    };
+
+    await broker.publish(EMAIL_REQUESTED, payload);
+    await broker.publish(EMAIL_REQUESTED, payload);
+
+    expect(notifier.sendNotificationEmail).toHaveBeenCalledTimes(1);
+  });
+
   it('propagates a notifier failure so the broker can nack the message', async () => {
     const broker = new InMemoryBroker();
     const notifier = fakeNotifier();
@@ -263,7 +287,7 @@ describe('EmailRequestedConsumer — notification (fire-and-forget)', () => {
     await expect(
       broker.publish(EMAIL_REQUESTED, {
         type: 'notification',
-        event_id: 'evt-7',
+        event_id: 'evt-4',
         email: 'a@b.com',
         repo: 'owner/repo',
         tag_name: 'v1',
@@ -290,7 +314,7 @@ describe('EmailRequestedConsumer — schema validation', () => {
     await expect(
       broker.publish(EMAIL_REQUESTED, {
         type: 'confirmation',
-        event_id: 'evt-8',
+        event_id: 'evt-1',
         email: 'a@b.com',
         repo: 'owner/repo',
         confirm_token: 'tok',
@@ -332,7 +356,7 @@ describe('EmailRequestedConsumer — schema validation', () => {
 
     await broker.publish(EMAIL_REQUESTED, {
       type: 'notification',
-      event_id: 'evt-9',
+      event_id: 'evt-2',
       email: 'a@b.com',
       repo: 'owner/repo',
       tag_name: 'v1',

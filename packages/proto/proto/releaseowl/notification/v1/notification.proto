@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package releaseowl.notification.v1;
+
+// NotificationService provides a synchronous email-send path that runs
+// parallel to the default async RabbitMQ broker path.  Both paths share
+// the same logical payload (confirmation / notification email) but this
+// one bypasses the Saga — it is a direct request-response call.
+service NotificationService {
+  // Notify sends a single email synchronously and returns only after the
+  // send has been attempted.  On success the response is empty.  On
+  // failure the status code reflects the failure class:
+  //   INVALID_ARGUMENT — malformed request (missing kind, missing email…)
+  //   UNAVAILABLE      — transient SMTP / network failure (safe to retry)
+  //   INTERNAL         — unexpected server-side error
+  rpc Notify(NotifyRequest) returns (NotifyResponse);
+}
+
+// NotifyRequest carries exactly one email kind via a oneof.  Clients MUST
+// populate one of the two variants; an empty oneof yields INVALID_ARGUMENT.
+message NotifyRequest {
+  oneof kind {
+    ConfirmationEmail confirmation = 1;
+    NotificationEmail notification = 2;
+  }
+}
+
+// ConfirmationEmail is sent when a new subscription is created.  The
+// recipient must follow the link to activate the subscription.
+message ConfirmationEmail {
+  string email = 1;
+  string repo = 2;
+  // confirm_token is the single-use activation token embedded in the link.
+  string confirm_token = 3;
+}
+
+// NotificationEmail is sent when a new release is published on a watched
+// repository.
+message NotificationEmail {
+  string email = 1;
+  string repo = 2;
+  string tag_name = 3;
+  // unsubscribe_token allows one-click unsubscription from the email footer.
+  string unsubscribe_token = 4;
+}
+
+// NotifyResponse is intentionally empty; success is signalled by the OK
+// status code alone.
+message NotifyResponse {}

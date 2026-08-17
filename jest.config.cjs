@@ -8,6 +8,7 @@ const baseConfig = {
     '^(\\.{1,2}/.*)\\.js$': '$1',
     '^@release-owl/contracts$': '<rootDir>/packages/contracts/src/index.ts',
     '^@release-owl/platform$': '<rootDir>/packages/platform/src/index.ts',
+    '^@release-owl/proto$': '<rootDir>/packages/proto/src/index.ts',
   },
   setupFiles: ['<rootDir>/src/__tests__/setup.ts'],
 };

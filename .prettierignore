@@ -2,3 +2,4 @@ dist/
 coverage/
 node_modules/
 README.md
+packages/proto/src/gen/

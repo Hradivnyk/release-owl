@@ -1,0 +1,24 @@
+{
+  "name": "@release-owl/proto",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "generate": "buf generate"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "*",
+    "@grpc/grpc-js": "^1.13.4"
+  },
+  "devDependencies": {
+    "@types/node": "*",
+    "ts-proto": "^2.7.0"
+  }
+}

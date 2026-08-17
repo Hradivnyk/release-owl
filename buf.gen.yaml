@@ -1,0 +1,12 @@
+version: v2
+plugins:
+  - local: protoc-gen-ts_proto
+    out: packages/proto/src/gen
+    opt:
+      - outputServices=grpc-js
+      - esModuleInterop=true
+      - importSuffix=.js
+      - oneof=unions
+      - snakeToCamel=true
+      - addGrpcMetadata=true
+      - useOptionals=messages

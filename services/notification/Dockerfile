@@ -8,6 +8,7 @@ COPY packages ./packages
 COPY .husky/install.mjs ./.husky/install.mjs
 COPY packages/contracts/package.json ./packages/contracts/
 COPY packages/platform/package.json ./packages/platform/
+COPY packages/proto/package.json ./packages/proto/
 COPY services/notification/package.json ./services/notification/
 RUN npm ci
 
@@ -26,11 +27,13 @@ COPY packages ./packages
 COPY .husky/install.mjs ./.husky/install.mjs
 COPY packages/contracts/package.json ./packages/contracts/
 COPY packages/platform/package.json ./packages/platform/
+COPY packages/proto/package.json ./packages/proto/
 COPY services/notification/package.json ./services/notification/
 RUN npm ci --omit=dev
 
 COPY --from=builder /app/packages/contracts/dist ./packages/contracts/dist
 COPY --from=builder /app/packages/platform/dist ./packages/platform/dist
+COPY --from=builder /app/packages/proto/dist ./packages/proto/dist
 COPY --from=builder /app/services/notification/dist ./services/notification/dist
 
 COPY services/notification/docker-entrypoint.sh ./services/notification/docker-entrypoint.sh

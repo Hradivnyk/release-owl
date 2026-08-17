@@ -8,6 +8,21 @@ const optional = (key: string, defaultValue: string): string => {
   return process.env[key] ?? defaultValue;
 };
 
+const oneOf = <T extends string>(
+  key: string,
+  allowed: readonly T[],
+  defaultValue: T,
+): T => {
+  const raw = process.env[key];
+  if (raw === undefined) return defaultValue;
+  if (!(allowed as readonly string[]).includes(raw)) {
+    throw new Error(
+      `Env variable ${key} must be one of [${allowed.join(', ')}], got: "${raw}"`,
+    );
+  }
+  return raw as T;
+};
+
 const optionalInt = (key: string, defaultValue: number): number => {
   const raw = process.env[key];
   if (raw === undefined) return defaultValue;
@@ -74,5 +89,15 @@ export const config = {
   },
   auth: {
     apiKey: required('API_KEY'),
+  },
+  notification: {
+    // Which Notifier implementation to use for release emails.
+    //   broker — async RabbitMQ publish (default; drives the Saga)
+    //   rest   — synchronous HTTP POST to notification service /api/notify
+    //   grpc   — synchronous gRPC call to notification service
+    notifier: oneOf('NOTIFIER', ['broker', 'rest', 'grpc'] as const, 'broker'),
+    restUrl: optional('NOTIFICATION_REST_URL', 'http://localhost:4000'),
+    grpcUrl: optional('NOTIFICATION_GRPC_URL', 'localhost:50051'),
+    timeoutMs: positiveInt('NOTIFICATION_TIMEOUT_MS', 5000),
   },
 } as const;
