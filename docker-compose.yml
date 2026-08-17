@@ -23,19 +23,38 @@ services:
     environment:
       NODE_ENV: production
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672
+      DATABASE_URL: postgresql://${NOTIFICATION_POSTGRES_USER:-postgres}:${NOTIFICATION_POSTGRES_PASSWORD:-postgres}@notification-db:5432/${NOTIFICATION_POSTGRES_DB:-notification_db}
       HEALTH_PORT: 3002
     depends_on:
       rabbitmq:
         condition: service_healthy # wait for the broker before consuming
+      notification-db:
+        condition: service_healthy # wait for DB before running migrations
     healthcheck:
       test: ['CMD-SHELL', 'curl -sf http://localhost:$${HEALTH_PORT}/']
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 15s
     labels:
       co.elastic.logs/enabled: 'true'
     restart: unless-stopped
+
+  notification-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${NOTIFICATION_POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${NOTIFICATION_POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${NOTIFICATION_POSTGRES_DB:-notification_db}
+    volumes:
+      - notification_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${NOTIFICATION_POSTGRES_USER:-postgres}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
@@ -63,6 +82,10 @@ services:
       - caddy_config:/config
     environment:
       DOMAIN: ${DOMAIN:-localhost}
+      GRAFANA_USER: ${GRAFANA_USER:-admin}
+      GRAFANA_HASHED_PASSWORD: ${GRAFANA_HASHED_PASSWORD}
+      KIBANA_USER: ${KIBANA_USER:-kibana}
+      KIBANA_HASHED_PASSWORD: ${KIBANA_HASHED_PASSWORD}
     depends_on:
       - app
     restart: unless-stopped
@@ -198,6 +221,7 @@ services:
 
 volumes:
   postgres_data:
+  notification_postgres_data:
   rabbitmq_data:
   caddy_data:
   caddy_config:

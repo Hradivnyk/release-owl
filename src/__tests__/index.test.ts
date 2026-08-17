@@ -17,6 +17,8 @@ jest.mock('../container.js', () => ({
     close: jest.fn().mockResolvedValue(undefined),
   },
   outboxRelay: { start: jest.fn(), stop: jest.fn() },
+  sagaReplyConsumer: { start: jest.fn().mockResolvedValue(undefined) },
+  sagaSweeper: { start: jest.fn(), stop: jest.fn() },
 }));
 jest.mock('../platform/logger.js', () => ({
   __esModule: true,

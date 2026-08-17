@@ -39,6 +39,9 @@ export const config = {
         ? 'debug'
         : 'info',
   ),
+  db: {
+    url: required('DATABASE_URL'),
+  },
   email: {
     host: required('SMTP_HOST'),
     port: optionalInt('SMTP_PORT', 587),
@@ -58,5 +61,9 @@ export const config = {
   },
   health: {
     port: optionalInt('HEALTH_PORT', 3002),
+  },
+  outbox: {
+    pollIntervalMs: optionalInt('OUTBOX_POLL_INTERVAL_MS', 1000),
+    batchSize: optionalInt('OUTBOX_BATCH_SIZE', 50),
   },
 } as const;

@@ -32,7 +32,7 @@ module.exports = {
       testMatch: [
         '<rootDir>/services/notification/src/**/__tests__/**/*.test.ts',
       ],
-      setupFiles: [],
+      setupFiles: ['<rootDir>/services/notification/src/__tests__/setup.ts'],
     },
     {
       ...baseConfig,

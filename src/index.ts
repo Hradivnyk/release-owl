@@ -2,7 +2,13 @@ import 'dotenv/config';
 import cron from 'node-cron';
 import app from './app.js';
 import { config } from './platform/config/index.js';
-import { broker, scannerService, outboxRelay } from './container.js';
+import {
+  broker,
+  scannerService,
+  outboxRelay,
+  sagaReplyConsumer,
+  sagaSweeper,
+} from './container.js';
 import logger from './platform/logger.js';
 
 const PORT = config.server.port;
@@ -16,6 +22,10 @@ if (!cron.validate(config.scanner.cronSchedule)) {
 
 async function startApp(): Promise<void> {
   await broker.connect();
+  // Listen for saga reply events (email.sent / email.failed) from notification.
+  await sagaReplyConsumer.start();
+  // Compensate sagas that never received a reply (e.g. broker message lost).
+  sagaSweeper.start();
 
   const server = await new Promise<ReturnType<typeof app.listen>>(
     (resolve, reject) => {
@@ -45,6 +55,7 @@ async function startApp(): Promise<void> {
     }, SHUTDOWN_TIMEOUT_MS);
 
     outboxRelay.stop();
+    sagaSweeper.stop();
 
     server.close(() => {
       broker

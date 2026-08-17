@@ -11,9 +11,11 @@ export async function up(knex: Knex): Promise<void> {
       .defaultTo(knex.fn.now());
     table.timestamp('published_at', { useTz: true }).nullable();
     table.integer('attempts').notNullable().defaultTo(0);
-    // The relay scans for not-yet-published rows oldest-first.
-    table.index(['published_at', 'created_at'], 'outbox_unpublished_idx');
   });
+  // Partial index: the relay's hot path only touches unpublished rows oldest-first.
+  await knex.raw(
+    'CREATE INDEX outbox_unpublished_idx ON outbox (created_at) WHERE published_at IS NULL',
+  );
 }
 
 export async function down(knex: Knex): Promise<void> {

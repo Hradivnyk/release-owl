@@ -14,6 +14,12 @@ import {
   ScannerService,
   InProcessReleaseHandler,
 } from './modules/releases/index.js';
+import {
+  SubscriptionSagaModel,
+  SubscriptionSagaOrchestrator,
+  SagaReplyConsumer,
+  SagaSweeper,
+} from './modules/sagas/index.js';
 
 const githubService = new GithubService(
   new FetchHttpClient(),
@@ -29,11 +35,32 @@ const subscriptionModel = new SubscriptionModel(knex, repositoryModel);
 const outboxModel = new OutboxModel(knex);
 const unitOfWork = new KnexUnitOfWork(knex);
 
+// Saga orchestrator: drives the subscribe→email-delivered distributed transaction.
+const sagaModel = new SubscriptionSagaModel(knex);
+const sagaOrchestrator = new SubscriptionSagaOrchestrator(
+  sagaModel,
+  subscriptionModel,
+  unitOfWork,
+  logger,
+);
+export const sagaReplyConsumer = new SagaReplyConsumer(
+  broker,
+  sagaOrchestrator,
+  logger,
+);
+export const sagaSweeper = new SagaSweeper(
+  sagaModel,
+  sagaOrchestrator,
+  logger,
+  { intervalMs: config.saga.sweepIntervalMs, timeoutMs: config.saga.timeoutMs },
+);
+
 const subscriptionService = new SubscriptionService(
   subscriptionModel,
   outboxModel,
   githubService,
   unitOfWork,
+  sagaModel,
 );
 
 export { subscriptionModel, repositoryModel };

@@ -39,7 +39,7 @@ services:
       dockerfile: services/notification/Dockerfile
     environment:
       NODE_ENV: production
-      HEALTH_PORT: 3002
+      DATABASE_URL: postgresql://test:test@notification-db:5432/notification_db
       RABBITMQ_URL: amqp://rabbitmq:5672
       SMTP_HOST: mailhog
       SMTP_PORT: '1025'
@@ -47,17 +47,44 @@ services:
       SMTP_PASS: test
       SMTP_FROM: noreply@test.example.com
       BASE_URL: http://localhost:3000
-    healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- http://localhost:3002/ || exit 1']
-      interval: 5s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      HEALTH_PORT: '3002'
     depends_on:
       rabbitmq:
         condition: service_healthy
+      notification-db:
+        condition: service_healthy
       mailhog:
         condition: service_started
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3002/ || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  notification-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: notification_db
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U test']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - notification_postgres_data:/var/lib/postgresql/data
+    restart: no
+
+  rabbitmq:
+    image: rabbitmq:3.13-alpine
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: no
 
   # Minimal GitHub API mock: returns HTTP 200 + JSON for any request,
   # which is enough for githubService.repositoryExists() to return true.
@@ -71,14 +98,6 @@ services:
           res.end(JSON.stringify({ id: 1 }));
         }).listen(3001, () => console.log('GitHub mock listening on :3001'));
       "
-
-  rabbitmq:
-    image: rabbitmq:3.13-alpine
-    healthcheck:
-      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   mailhog:
     image: mailhog/mailhog:v1.0.1
@@ -100,11 +119,16 @@ services:
       - postgres_data:/var/lib/postgresql/data
     restart: no
 
-# Use a tmpfs-backed volume so E2E tests always get a fresh database.
+# Use tmpfs-backed volumes so E2E tests always get a fresh database.
 # PostgreSQL ignores POSTGRES_USER/PASSWORD on an already-initialised data
 # directory, which would cause auth failures if a named volume were reused.
 volumes:
   postgres_data:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+  notification_postgres_data:
     driver: local
     driver_opts:
       type: tmpfs

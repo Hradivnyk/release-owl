@@ -146,6 +146,7 @@ export class RabbitMQBroker extends EventEmitter implements IBroker {
             { event: 'broker.reconnect_failed', attempt, err },
             'Reconnect attempt failed',
           );
+          if (this.isClosing) return;
           // eslint-disable-next-line no-await-in-loop -- backoff sleep between retries
           await sleepWithJitter(delay);
           delay = Math.min(delay * 2, MAX_BACKOFF_MS);

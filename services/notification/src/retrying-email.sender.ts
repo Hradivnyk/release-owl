@@ -20,14 +20,15 @@ export class RetryingEmailSender implements IEmailSender {
   ) {}
 
   async send(options: SendMailOptions): Promise<void> {
+    const maxAttempts = Math.max(1, this.config.attempts);
     let delay = this.config.backoffMs;
-    for (let attempt = 1; attempt <= this.config.attempts; attempt++) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         // eslint-disable-next-line no-await-in-loop -- retries are inherently sequential
         await this.inner.send(options);
         return;
       } catch (err) {
-        if (attempt >= this.config.attempts) {
+        if (attempt >= maxAttempts) {
           this.logger.error(
             { event: 'email.send_exhausted', attempt, err },
             'Email send retries exhausted',
@@ -36,7 +37,7 @@ export class RetryingEmailSender implements IEmailSender {
         }
         this.logger.warn(
           { event: 'email.send_retry', attempt, delay, err },
-          `Email send failed, retrying ${attempt.toString()}/${this.config.attempts.toString()}`,
+          `Email send failed, retrying ${attempt.toString()}/${maxAttempts.toString()}`,
         );
         // eslint-disable-next-line no-await-in-loop -- backoff sleep between retries
         await new Promise<void>((resolve) => setTimeout(resolve, delay));

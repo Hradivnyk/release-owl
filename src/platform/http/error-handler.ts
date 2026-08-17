@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { AppError } from '../errors.js';
+import logger from '../logger.js';
 
 export function errorHandler(
   err: unknown,
@@ -8,8 +9,9 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ): void {
+  const log = req.log ?? logger;
   if (err instanceof ZodError) {
-    req.log.warn(
+    log.warn(
       { event: 'error.validation', issues: err.issues },
       'Request validation failed',
     );
@@ -18,11 +20,11 @@ export function errorHandler(
   }
   if (err instanceof AppError) {
     if (err.statusCode >= 500) {
-      req.log.error({ event: 'error.app_error', err }, err.message);
+      log.error({ event: 'error.app_error', err }, err.message);
     }
     res.status(err.statusCode).json({ error: err.message });
     return;
   }
-  req.log.error({ event: 'error.unhandled', err }, 'Unhandled error');
+  log.error({ event: 'error.unhandled', err }, 'Unhandled error');
   res.status(500).json({ error: 'Internal server error' });
 }

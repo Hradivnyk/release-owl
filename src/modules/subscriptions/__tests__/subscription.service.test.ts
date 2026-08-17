@@ -9,11 +9,15 @@ import { EMAIL_REQUESTED } from '@release-owl/contracts';
 import type { ISubscriptionModel } from '../subscription.model.js';
 import type { IOutboxModel } from '../../outbox/index.js';
 import type { IGithubService } from '../../github/index.js';
+import type { ISagaModel } from '../../sagas/index.js';
 import { SubscriptionService } from '../subscription.service.js';
 
 const VALID_TOKEN = 'a'.repeat(64);
 const EMAIL = 'user@example.com';
 const REPO = 'owner/repo';
+
+const FAKE_SAGA_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+const FAKE_SUBSCRIPTION_ID = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
 
 describe('SubscriptionService', () => {
   let service: SubscriptionService;
@@ -21,13 +25,16 @@ describe('SubscriptionService', () => {
   let mockOutbox: jest.Mocked<IOutboxModel>;
   let mockUow: { run: jest.Mock };
   let mockGithubService: jest.Mocked<IGithubService>;
+  let mockSagaModel: jest.Mocked<ISagaModel>;
 
   beforeEach(() => {
     mockModel = {
       create: jest.fn(),
+      updatePendingSubscription: jest.fn(),
       hasConfirmedSubscription: jest.fn(),
       confirm: jest.fn(),
       deleteByUnsubscribeToken: jest.fn(),
+      deleteById: jest.fn(),
       findAllConfirmedWithTokens: jest.fn(),
       findByEmail: jest.fn(),
     };
@@ -46,11 +53,19 @@ describe('SubscriptionService', () => {
       repositoryExists: jest.fn(),
       getLatestRelease: jest.fn(),
     };
+    mockSagaModel = {
+      start: jest.fn(),
+      findById: jest.fn(),
+      findStartedOlderThan: jest.fn(),
+      markCompleted: jest.fn(),
+      markCompensated: jest.fn(),
+    };
     service = new SubscriptionService(
       mockModel,
       mockOutbox,
       mockGithubService,
       mockUow,
+      mockSagaModel,
     );
   });
 
@@ -58,7 +73,9 @@ describe('SubscriptionService', () => {
     beforeEach(() => {
       mockGithubService.repositoryExists.mockResolvedValue(true);
       mockModel.hasConfirmedSubscription.mockResolvedValue(false);
-      mockModel.create.mockResolvedValue(undefined);
+      mockModel.updatePendingSubscription.mockResolvedValue(null);
+      mockModel.create.mockResolvedValue(FAKE_SUBSCRIPTION_ID);
+      mockSagaModel.start.mockResolvedValue(FAKE_SAGA_ID);
       mockOutbox.enqueue.mockResolvedValue(undefined);
     });
 
@@ -102,9 +119,21 @@ describe('SubscriptionService', () => {
           email: EMAIL,
           repo: REPO,
           confirm_token: confirmToken,
+          saga_id: FAKE_SAGA_ID,
         },
         expect.anything(),
       );
+    });
+
+    it('should start a saga row inside the same unit of work as the subscription', async () => {
+      await service.subscribe(EMAIL, REPO);
+
+      expect(mockSagaModel.start).toHaveBeenCalledWith(
+        FAKE_SUBSCRIPTION_ID,
+        expect.anything(), // trx
+      );
+      // All three writes happen inside one unitOfWork.run call
+      expect(mockUow.run).toHaveBeenCalledTimes(1);
     });
 
     it('should write the subscription and the event in a single unit of work', async () => {

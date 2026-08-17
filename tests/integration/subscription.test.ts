@@ -9,7 +9,7 @@ jest.mock('../../src/modules/github/github.service.js');
 jest.mock('../../src/modules/notifications/broker-notifier.js');
 
 const mockedGithub = jest.mocked(GithubService).prototype;
-const mockedEmail = jest.mocked(BrokerNotifier).prototype;
+const mockedNotifier = jest.mocked(BrokerNotifier).prototype;
 
 const EMAIL = 'integration@example.com';
 const REPO = 'owner/repo';
@@ -46,7 +46,7 @@ beforeEach(async () => {
   await knex('repositories').delete();
   jest.clearAllMocks();
   mockedGithub.repositoryExists.mockResolvedValue(true);
-  mockedEmail.sendConfirmationEmail.mockResolvedValue(undefined);
+  mockedNotifier.sendConfirmationEmail.mockResolvedValue(undefined);
 });
 
 afterAll(async () => {

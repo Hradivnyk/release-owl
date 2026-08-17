@@ -12,13 +12,25 @@ interface SubscriptionRow {
 }
 
 export interface ISubscriptionModel {
+  /** Inserts a new pending subscription and returns its generated id. */
   create(
     email: string,
     repo: string,
     confirmToken: string,
     unsubscribeToken: string,
     trx?: Knex,
-  ): Promise<void>;
+  ): Promise<string>;
+  /**
+   * Updates tokens on an existing pending subscription and returns its id,
+   * or returns null if no pending subscription exists for the given email+repo.
+   */
+  updatePendingSubscription(
+    email: string,
+    repo: string,
+    confirmToken: string,
+    unsubscribeToken: string,
+    trx?: Knex,
+  ): Promise<string | null>;
   hasConfirmedSubscription(email: string, repo: string): Promise<boolean>;
   confirm(
     confirmToken: string,
@@ -26,6 +38,8 @@ export interface ISubscriptionModel {
   deleteByUnsubscribeToken(
     unsubscribeToken: string,
   ): Promise<{ email: string; repo: string } | null>;
+  /** Deletes a subscription by its primary key (used for saga compensation). */
+  deleteById(id: string, trx?: Knex): Promise<void>;
   findAllConfirmedWithTokens(): Promise<ConfirmedSubscriptionWithToken[]>;
   findByEmail(email: string): Promise<Subscription[]>;
 }
@@ -37,17 +51,18 @@ export class SubscriptionModel implements ISubscriptionModel {
   ) {}
 
   // Ensures the repository exists, then inserts a new pending subscription with both
-  // tokens. Accepts a transaction so the insert can be committed atomically with the
-  // outbox event that triggers the confirmation email.
+  // tokens. Returns the generated subscription id so the caller can start a saga.
+  // Accepts a transaction so the insert can be committed atomically with the outbox
+  // event that triggers the confirmation email and the saga state row.
   async create(
     email: string,
     repo: string,
     confirmToken: string,
     unsubscribeToken: string,
     trx?: Knex,
-  ): Promise<void> {
+  ): Promise<string> {
     await this.repositoryModel.upsert(repo, trx);
-    await (trx ?? this.db)('subscriptions')
+    const rows: { id: string }[] = await (trx ?? this.db)('subscriptions')
       .insert({
         email,
         repo,
@@ -55,8 +70,32 @@ export class SubscriptionModel implements ISubscriptionModel {
         unsubscribe_token: unsubscribeToken,
         status: 'pending',
       })
-      .onConflict(['email', 'repo'])
-      .merge(['confirm_token', 'unsubscribe_token']);
+      .returning('id');
+    return rows[0].id;
+  }
+
+  // Deletes a subscription by its primary key. Used by the saga orchestrator to
+  // compensate (undo) a pending subscription when the confirmation email could not
+  // be delivered after all retries.
+  async deleteById(id: string, trx?: Knex): Promise<void> {
+    await (trx ?? this.db)('subscriptions').where({ id }).delete();
+  }
+
+  async updatePendingSubscription(
+    email: string,
+    repo: string,
+    confirmToken: string,
+    unsubscribeToken: string,
+    trx?: Knex,
+  ): Promise<string | null> {
+    const rows: { id: string }[] = await (trx ?? this.db)('subscriptions')
+      .where({ email, repo, status: 'pending' })
+      .update({
+        confirm_token: confirmToken,
+        unsubscribe_token: unsubscribeToken,
+      })
+      .returning('id');
+    return rows[0]?.id ?? null;
   }
 
   // Returns true only when a CONFIRMED subscription exists. A still-pending row is

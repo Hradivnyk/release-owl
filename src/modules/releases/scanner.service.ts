@@ -1,7 +1,6 @@
 import cron from 'node-cron';
 import { config } from '../../platform/config/index.js';
 import { scannerScanDurationSeconds } from '../../metrics/index.js';
-import logger from '../../platform/logger.js';
 import type {
   ConfirmedSubscriptionsProvider,
   ConfirmedSubscriptionWithToken,
@@ -24,6 +23,8 @@ function groupByRepo(
 }
 
 export class ScannerService {
+  private scanning = false;
+
   constructor(
     private readonly subscriptions: ConfirmedSubscriptionsProvider,
     private readonly githubService: IGithubService,
@@ -72,6 +73,14 @@ export class ScannerService {
   }
 
   async scan(): Promise<void> {
+    if (this.scanning) {
+      this.logger.warn(
+        { event: 'scanner.already_running' },
+        'Scan already in progress, skipping',
+      );
+      return;
+    }
+    this.scanning = true;
     const endTimer = scannerScanDurationSeconds.startTimer();
     let result = 'success';
     try {
@@ -107,6 +116,7 @@ export class ScannerService {
       throw err;
     } finally {
       endTimer({ result });
+      this.scanning = false;
     }
   }
 
@@ -119,14 +129,14 @@ export class ScannerService {
 
     cron.schedule(config.scanner.cronSchedule, () => {
       this.scan().catch((err: unknown) => {
-        logger.error(
+        this.logger.error(
           { event: 'scanner.unhandled_error', err },
           'Unhandled error during scan',
         );
       });
     });
 
-    logger.info(
+    this.logger.info(
       { event: 'scanner.scheduled', schedule: config.scanner.cronSchedule },
       'Scanner scheduled',
     );

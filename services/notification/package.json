@@ -6,19 +6,23 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "migrate": "tsx src/migrate.ts"
   },
   "dependencies": {
     "@release-owl/contracts": "*",
     "@release-owl/platform": "*",
     "dotenv": "*",
+    "knex": "*",
     "nodemailer": "*",
+    "pg": "*",
     "pino": "*",
     "pino-pretty": "*"
   },
   "devDependencies": {
     "@types/node": "*",
     "@types/nodemailer": "*",
+    "@types/pg": "*",
     "tsx": "*"
   }
 }

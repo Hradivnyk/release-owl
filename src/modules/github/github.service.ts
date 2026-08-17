@@ -48,7 +48,10 @@ export class GithubService implements IGithubService {
 
     const retryAfter = response.headers.get('Retry-After');
     if (retryAfter) {
-      const resetAt = new Date(Date.now() + Number(retryAfter) * 1000);
+      const secs = Number(retryAfter);
+      const resetAt = Number.isNaN(secs)
+        ? new Date(Date.now() + 60_000)
+        : new Date(Date.now() + secs * 1000);
       logger.warn(
         { event: 'github.rate_limit', repo, status: response.status, resetAt },
         'GitHub rate limit hit (Retry-After)',
@@ -57,9 +60,11 @@ export class GithubService implements IGithubService {
     }
 
     const resetHeader = response.headers.get('X-RateLimit-Reset');
-    const resetAt = resetHeader
-      ? new Date(Number(resetHeader) * 1000)
-      : new Date(Date.now() + 60_000);
+    const resetEpoch = resetHeader ? Number(resetHeader) : NaN;
+    const resetAt =
+      !Number.isNaN(resetEpoch) && resetEpoch > 0
+        ? new Date(resetEpoch * 1000)
+        : new Date(Date.now() + 60_000);
 
     logger.warn(
       { event: 'github.rate_limit', repo, status: response.status, resetAt },

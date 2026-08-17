@@ -6,6 +6,9 @@ export const ConfirmationEmailRequestedSchema = z.object({
   email: z.string().email(),
   repo: z.string(),
   confirm_token: z.string(),
+  // Correlation id used by the orchestrated Saga so the app service can match
+  // the reply (email.sent / email.failed) back to the pending subscription.
+  saga_id: z.string().uuid(),
 });
 
 export const NotificationEmailRequestedSchema = z.object({

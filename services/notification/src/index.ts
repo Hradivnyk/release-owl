@@ -1,6 +1,11 @@
 import 'dotenv/config';
 import http from 'node:http';
-import { broker, emailRequestedConsumer } from './container.js';
+import {
+  broker,
+  emailRequestedConsumer,
+  outboxRelay,
+  knex,
+} from './container.js';
 import { config } from './config.js';
 import logger from './logger.js';
 
@@ -8,6 +13,8 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 async function start(): Promise<void> {
   await broker.connect();
+  // Drain outbox reply events (email.sent / email.failed) to the broker.
+  outboxRelay.start();
   await emailRequestedConsumer.start();
 
   const healthServer = http.createServer((_req, res) => {
@@ -43,16 +50,20 @@ async function start(): Promise<void> {
       process.exit(1);
     }, SHUTDOWN_TIMEOUT_MS);
 
+    outboxRelay.stop();
+
     healthServer.close(() => {
+      emailRequestedConsumer.stop();
       broker
         .close()
+        .then(async () => knex.destroy())
         .then(() => {
           clearTimeout(timer);
           process.exit(code);
         })
         .catch((err: unknown) => {
           clearTimeout(timer);
-          logger.error({ err }, 'Error closing broker during shutdown');
+          logger.error({ err }, 'Error during shutdown');
           process.exit(1);
         });
     });
