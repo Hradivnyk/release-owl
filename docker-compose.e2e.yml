@@ -1,29 +1,63 @@
 services:
   app:
-    depends_on:
-      db:
-        condition: service_healthy
-      github-mock:
-        condition: service_started
+    build: .
     env_file:
       - path: .env
         required: false
     ports:
       - '3001:3000'
     environment:
+      NODE_ENV: production
       DATABASE_URL: postgresql://test:test@db:5432/test_db
+      BASE_URL: http://localhost:3000
+      ALLOWED_ORIGIN: '*'
+      API_KEY: test-api-key
+      SCANNER_CRON_SCHEDULE: '0 * * * *'
+      RABBITMQ_URL: amqp://rabbitmq:5672
+      # Point to the in-network mock instead of the real GitHub API so that
+      # E2E tests exercise the full internal stack without an external dependency.
+      GITHUB_API_URL: http://github-mock:3001
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/health || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      notification:
+        condition: service_healthy
+      github-mock:
+        condition: service_started
+
+  notification:
+    build:
+      context: .
+      dockerfile: services/notification/Dockerfile
+    environment:
+      NODE_ENV: production
+      HEALTH_PORT: 3002
+      RABBITMQ_URL: amqp://rabbitmq:5672
       SMTP_HOST: mailhog
       SMTP_PORT: '1025'
       SMTP_USER: test@example.com
       SMTP_PASS: test
       SMTP_FROM: noreply@test.example.com
       BASE_URL: http://localhost:3000
-      ALLOWED_ORIGIN: '*'
-      API_KEY: test-api-key
-      SCANNER_CRON_SCHEDULE: '0 * * * *'
-      # Point to the in-network mock instead of the real GitHub API so that
-      # E2E tests exercise the full internal stack without an external dependency.
-      GITHUB_API_URL: http://github-mock:3001
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3002/ || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
 
   # Minimal GitHub API mock: returns HTTP 200 + JSON for any request,
   # which is enough for githubService.repositoryExists() to return true.
@@ -38,12 +72,21 @@ services:
         }).listen(3001, () => console.log('GitHub mock listening on :3001'));
       "
 
+  rabbitmq:
+    image: rabbitmq:3.13-alpine
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   mailhog:
     image: mailhog/mailhog:v1.0.1
     ports:
       - '8025:8025' # web UI — open in browser to inspect captured emails
 
   db:
+    image: postgres:16-alpine
     environment:
       POSTGRES_USER: test
       POSTGRES_PASSWORD: test
@@ -53,11 +96,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: no
 
-# Override postgres_data to use a tmpfs-backed volume so E2E tests always
-# get a fresh database, even when the named volume already exists from a
-# previous dev run (PostgreSQL ignores POSTGRES_USER/PASSWORD on an already-
-# initialised data directory, which would cause auth failures otherwise).
+# Use a tmpfs-backed volume so E2E tests always get a fresh database.
+# PostgreSQL ignores POSTGRES_USER/PASSWORD on an already-initialised data
+# directory, which would cause auth failures if a named volume were reused.
 volumes:
   postgres_data:
     driver: local

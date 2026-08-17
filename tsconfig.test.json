@@ -5,8 +5,12 @@
     "moduleResolution": "Node10",
     "ignoreDeprecations": "6.0",
     "isolatedModules": true,
-    "types": ["jest", "node"]
+    "types": ["jest", "node"],
+    "paths": {
+      "@release-owl/contracts": ["./packages/contracts/src/index.ts"],
+      "@release-owl/platform": ["./packages/platform/src/index.ts"]
+    }
   },
-  "include": ["src/**/*", "tests/**/*"],
+  "include": ["src/**/*", "tests/**/*", "packages/**/*", "services/**/*"],
   "exclude": ["node_modules", "dist"]
 }

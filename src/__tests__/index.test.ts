@@ -11,17 +11,27 @@ jest.mock('../app.js', () => ({
   default: { listen: jest.fn() },
 }));
 jest.mock('../container.js', () => ({
-  scannerService: { scan: jest.fn() },
+  scannerService: { scan: jest.fn(), start: jest.fn() },
+  broker: {
+    connect: jest.fn().mockResolvedValue(undefined),
+    close: jest.fn().mockResolvedValue(undefined),
+  },
+  outboxRelay: { start: jest.fn(), stop: jest.fn() },
 }));
-jest.mock('../utils/logger.js', () => ({
+jest.mock('../platform/logger.js', () => ({
   __esModule: true,
   default: { info: jest.fn(), error: jest.fn() },
 }));
-jest.mock('../config/index.js', () => ({
+jest.mock('../platform/config/index.js', () => ({
   config: {
+    server: { port: 3000 },
     scanner: { cronSchedule: '30 6 * * *' },
   },
 }));
+
+const flushAsync = async (): Promise<void> => {
+  await new Promise((resolve) => setImmediate(resolve));
+};
 
 describe('index startup', () => {
   beforeEach(() => {
@@ -37,7 +47,7 @@ describe('index startup', () => {
     );
   });
 
-  it('should register a cron job with the configured schedule on a valid cron', async () => {
+  it('should call scannerService.start() on a valid cron schedule', async () => {
     const { default: cron } = await import('node-cron');
     jest.mocked(cron).validate.mockReturnValue(true);
 
@@ -46,15 +56,17 @@ describe('index startup', () => {
       _port: unknown,
       cb: () => void,
     ) => {
-      cb();
-    }) as typeof app.listen);
+      setImmediate(cb);
+      return { once: jest.fn(), close: jest.fn() };
+    }) as unknown as typeof app.listen);
 
     await import('../index.js');
+    // broker.connect() resolves as a microtask; app.listen schedules
+    // the ready callback via setImmediate — drain both rounds.
+    await flushAsync();
+    await flushAsync();
 
-    const { config } = await import('../config/index.js');
-    expect(jest.mocked(cron).schedule).toHaveBeenCalledWith(
-      config.scanner.cronSchedule,
-      expect.any(Function),
-    );
+    const { scannerService } = await import('../container.js');
+    expect(jest.mocked(scannerService.start)).toHaveBeenCalled();
   });
 });

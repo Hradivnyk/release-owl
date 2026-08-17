@@ -55,6 +55,12 @@ for (let i = 0; i < rawComposeArgs.length; i++) {
 
 const composeFlags = composeFlagParts.join(' ');
 const testCommand = args.slice(separatorIndex + 1).join(' ');
+
+if (!testCommand.trim()) {
+  console.error('Error: no test command provided after --');
+  process.exit(1);
+}
+
 const compose = `docker compose ${composeFlags}`;
 
 function run(cmd) {
@@ -71,8 +77,12 @@ try {
 
 // 2. Bring the stack up — fail fast (with cleanup) if this step errors,
 //    e.g. when --wait times out waiting for a health-check.
+//    --build rebuilds images from the current source on every run; without it
+//    Compose silently reuses a stale image left over from another branch, which
+//    can start an app that never becomes healthy (e.g. one that blocks on a
+//    broker absent from this stack). Layer caching keeps no-op rebuilds fast.
 try {
-  run(`${compose} up -d --wait`);
+  run(`${compose} up -d --build --wait`);
 } catch (err) {
   try {
     run(`${compose} down -v`);

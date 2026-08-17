@@ -1,6 +1,15 @@
 {
+  "name": "release-owl",
+  "version": "1.0.0",
+  "private": true,
   "type": "module",
+  "workspaces": [
+    "packages/*",
+    "services/*"
+  ],
   "dependencies": {
+    "@release-owl/contracts": "*",
+    "@release-owl/platform": "*",
     "cors": "^2.8.6",
     "dotenv": "^17.4.1",
     "express": "^5.2.1",
@@ -13,13 +22,16 @@
     "pg": "^8.20.0",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
+    "prom-client": "^15.1.3",
     "swagger-ui-express": "^5.0.1",
     "zod": "^4.3.6"
   },
   "scripts": {
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build:packages": "tsc -p packages/contracts/tsconfig.json && tsc -p packages/platform/tsconfig.json",
+    "build": "npm run build:packages && tsc",
+    "build:services": "npm run build:packages && tsc -p services/notification/tsconfig.json",
     "migrate": "tsx src/migrate.ts",
     "migrate:rollback": "node --import tsx/esm node_modules/.bin/knex --knexfile knexfile.ts migrate:rollback",
     "migrate:make": "node --import tsx/esm node_modules/.bin/knex --knexfile knexfile.ts migrate:make",
@@ -28,13 +40,15 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "quality": "npm run lint && npm run format:check && npm run typecheck && npm run build",
+    "ci": "npm run quality && npm run test",
     "test": "npm run test:unit && npm run test:integration:ci && npm run test:e2e:ci",
-    "test:unit": "jest --selectProjects unit",
+    "test:unit": "jest --selectProjects unit notification platform",
     "test:unit:coverage": "npm run test:unit -- --coverage",
     "test:integration:ci": "node scripts/run-with-compose.cjs -f docker-compose.test.yml -- jest --selectProjects integration --runInBand",
     "test:integration:coverage": "npm run test:integration:ci -- --coverage",
     "test:e2e": "playwright test",
-    "test:e2e:ci": "node scripts/run-with-compose.cjs -p software-engineering-school-6-0-hradivnyk-e2e -f docker-compose.yml -f docker-compose.e2e.yml --env PLAYWRIGHT_BASE_URL=http://127.0.0.1:3001 --env PLAYWRIGHT_SKIP_WEBSERVER=1 -- playwright test",
+    "test:e2e:ci": "node scripts/run-with-compose.cjs -p software-engineering-school-6-0-hradivnyk-e2e -f docker-compose.e2e.yml --env PLAYWRIGHT_BASE_URL=http://127.0.0.1:3001 --env PLAYWRIGHT_SKIP_WEBSERVER=1 -- playwright test",
     "test:e2e:ui": "playwright test --ui",
     "prepare": "node .husky/install.mjs"
   },

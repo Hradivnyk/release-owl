@@ -1,15 +1,15 @@
 import request from 'supertest';
 import app from '../../src/app.js';
-import knex from '../../src/db/knex.js';
-import { GithubService } from '../../src/services/githubService.js';
-import { EmailService } from '../../src/services/emailService.js';
+import knex from '../../src/platform/db/knex.js';
+import { GithubService } from '../../src/modules/github/github.service.js';
+import { BrokerNotifier } from '../../src/modules/notifications/broker-notifier.js';
 import { subscriptionModel, repositoryModel } from '../../src/container.js';
 
-jest.mock('../../src/services/githubService.js');
-jest.mock('../../src/services/emailService.js');
+jest.mock('../../src/modules/github/github.service.js');
+jest.mock('../../src/modules/notifications/broker-notifier.js');
 
 const mockedGithub = jest.mocked(GithubService).prototype;
-const mockedEmail = jest.mocked(EmailService).prototype;
+const mockedEmail = jest.mocked(BrokerNotifier).prototype;
 
 const EMAIL = 'integration@example.com';
 const REPO = 'owner/repo';
@@ -41,6 +41,7 @@ async function getTokens(email = EMAIL, repo = REPO) {
 }
 
 beforeEach(async () => {
+  await knex('outbox').delete();
   await knex('subscriptions').delete();
   await knex('repositories').delete();
   jest.clearAllMocks();
@@ -76,7 +77,7 @@ describe('API key authentication', () => {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/subscribe', () => {
-  it('returns 200 and persists a pending subscription', async () => {
+  it('returns 200, persists a pending subscription, and enqueues a confirmation event', async () => {
     const res = await subscribe();
 
     expect(res.status).toBe(200);
@@ -86,11 +87,20 @@ describe('POST /api/subscribe', () => {
       .where({ email: EMAIL, repo: REPO })
       .first();
     expect(sub).toMatchObject({ email: EMAIL, repo: REPO, status: 'pending' });
-    expect(mockedEmail.sendConfirmationEmail).toHaveBeenCalledWith(
-      EMAIL,
-      expect.stringMatching(/^[0-9a-f]{64}$/),
-      REPO,
-    );
+
+    // The email is not sent inline; an outbox row is committed in the same
+    // transaction and published to the broker later by the relay.
+    const events = await knex('outbox').where({
+      routing_key: 'email.requested',
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].published_at).toBeNull();
+    expect(events[0].payload).toMatchObject({
+      type: 'confirmation',
+      email: EMAIL,
+      repo: REPO,
+      confirm_token: sub.confirm_token,
+    });
   });
 
   it('does not fail when the same repo is used for a different email', async () => {
@@ -129,8 +139,30 @@ describe('POST /api/subscribe', () => {
     expect(res.body).toHaveProperty('error');
   });
 
-  it('returns 409 and keeps only one subscription on duplicate', async () => {
+  it('resends the confirmation and keeps one row when re-subscribing while pending', async () => {
     await subscribe();
+    const res = await subscribe();
+
+    expect(res.status).toBe(200);
+
+    const events = await knex('outbox').where({
+      routing_key: 'email.requested',
+    });
+    expect(events).toHaveLength(2);
+
+    const rows = await knex('subscriptions').where({
+      email: EMAIL,
+      repo: REPO,
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe('pending');
+  });
+
+  it('returns 409 and keeps one row when re-subscribing to a confirmed subscription', async () => {
+    await subscribe();
+    const { confirmToken } = await getTokens();
+    await request(app).get(`/api/confirm/${confirmToken}`);
+
     const res = await subscribe();
 
     expect(res.status).toBe(409);

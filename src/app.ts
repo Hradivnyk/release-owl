@@ -3,20 +3,38 @@ import swaggerUi from 'swagger-ui-express';
 import { load } from 'js-yaml';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type { JsonObject } from 'swagger-ui-express';
 
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
-import logger from './utils/logger.js';
+import logger from './platform/logger.js';
 import { pinoHttp } from 'pino-http';
-import { config } from './config/index.js';
-import subscriptionRoutes from './routes/subscriptionRoutes.js';
-import { errorHandler } from './middleware/errorHandler.js';
+import { requestContext } from './utils/requestContext.js';
+import { config } from './platform/config/index.js';
+import subscriptionRoutes from './modules/subscriptions/subscription.routes.js';
+import { errorHandler } from './platform/http/error-handler.js';
+import { metricsMiddleware } from './platform/http/metricsMiddleware.js';
+import { register } from './metrics/index.js';
 
 const app = express();
 
 app.use(express.static(resolve(process.cwd(), 'public')));
+
+app.get('/health', (_req, res) => {
+  res.sendStatus(200);
+});
+
+app.use(metricsMiddleware);
+
+app.get('/metrics', (_req, res) => {
+  res.set('Content-Type', register.contentType);
+  register
+    .metrics()
+    .then((data) => res.send(data))
+    .catch((err: unknown) => res.status(500).send(String(err)));
+});
 
 app.use(helmet());
 
@@ -37,7 +55,19 @@ const limiter = rateLimit({
 
 app.use(limiter);
 
-app.use(pinoHttp({ logger }));
+// Establish requestId in AsyncLocalStorage before pinoHttp so service-layer
+// logs automatically include the same ID without explicit propagation.
+app.use((_req, _res, next) => {
+  requestContext.run(randomUUID(), next);
+});
+
+app.use(
+  pinoHttp({
+    logger,
+    genReqId: () => requestContext.getStore() ?? randomUUID(),
+    customAttributeKeys: { reqId: 'requestId' },
+  }),
+);
 
 app.use(express.json());
 

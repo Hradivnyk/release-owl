@@ -1,0 +1,56 @@
+{
+  "index_patterns": ["app-logs-*"],
+  "priority": 100,
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "index.refresh_interval": "5s"
+    },
+    "mappings": {
+      "dynamic_templates": [
+        {
+          "strings_as_keyword": {
+            "match_mapping_type": "string",
+            "mapping": {
+              "type": "keyword",
+              "ignore_above": 1024
+            }
+          }
+        }
+      ],
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "time": { "type": "date", "format": "epoch_millis" },
+        "level": { "type": "keyword" },
+        "msg": {
+          "type": "text",
+          "fields": {
+            "keyword": { "type": "keyword", "ignore_above": 1024 }
+          }
+        },
+        "event": { "type": "keyword" },
+        "service": { "type": "keyword" },
+        "version": { "type": "keyword" },
+        "env": { "type": "keyword" },
+        "repo": { "type": "keyword" },
+        "emailHash": { "type": "keyword" },
+        "requestId": { "type": "keyword" },
+        "durationMs": { "type": "long" },
+        "port": { "type": "integer" },
+        "pid": { "type": "integer" },
+        "hostname": { "type": "keyword" },
+        "method": { "type": "keyword" },
+        "url": { "type": "keyword", "ignore_above": 2048 },
+        "statusCode": { "type": "integer" },
+        "err": {
+          "properties": {
+            "message": { "type": "text" },
+            "type": { "type": "keyword" },
+            "stack": { "type": "text" }
+          }
+        }
+      }
+    }
+  }
+}

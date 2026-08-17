@@ -22,7 +22,7 @@ reviews:
       [
         {
           path: '**/*.ts',
-          instructions: 'Do not suggest validation. Do not suggest error handling. Do not suggest translations. Do not repeat same comments in one pull request.',
+          instructions: 'Do not suggest translations. Do not repeat same comments in one pull request.',
         },
       ]
     base_branches:

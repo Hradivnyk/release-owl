@@ -1,49 +1,66 @@
-import knex from './db/knex.js';
-import { RepositoryModel } from './models/repositoryModel.js';
-import { SubscriptionModel } from './models/subscriptionModel.js';
-import { EmailService } from './services/emailService.js';
-import { NodemailerEmailSender } from './services/emailSender.js';
-import { EmailTemplateBuilder } from './services/emailTemplateBuilder.js';
-import { GithubService } from './services/githubService.js';
-import { FetchHttpClient } from './httpClient.js';
-import { SubscriptionService } from './services/subscriptionService.js';
-import { ScannerService } from './services/scannerService.js';
-import { SubscriptionController } from './controllers/subscriptionController.js';
-import { config } from './config/index.js';
-import logger from './utils/logger.js';
+import knex from './platform/db/knex.js';
+import { config } from './platform/config/index.js';
+import logger from './platform/logger.js';
+import { RabbitMQBroker } from '@release-owl/platform';
+import { GithubService, FetchHttpClient } from './modules/github/index.js';
+import { BrokerNotifier } from './modules/notifications/index.js';
+import { SubscriptionModel } from './modules/subscriptions/subscription.model.js';
+import { RepositoryModel } from './modules/subscriptions/repository.model.js';
+import { SubscriptionService } from './modules/subscriptions/subscription.service.js';
+import { KnexUnitOfWork } from './platform/db/unit-of-work.js';
+import { OutboxModel, OutboxRelay } from './modules/outbox/index.js';
+import { SubscriptionController } from './modules/subscriptions/subscription.controller.js';
+import {
+  ScannerService,
+  InProcessReleaseHandler,
+} from './modules/releases/index.js';
 
-const repositoryModel = new RepositoryModel(knex);
-const subscriptionModel = new SubscriptionModel(knex, repositoryModel);
-const emailSender = new NodemailerEmailSender({
-  host: config.email.host,
-  port: config.email.port,
-  user: config.email.user,
-  pass: config.email.pass,
-  from: config.email.from,
-});
-const emailTemplates = new EmailTemplateBuilder(config.app.baseUrl);
-const emailService = new EmailService(emailSender, emailTemplates);
 const githubService = new GithubService(
   new FetchHttpClient(),
   config.github.token,
 );
 
+export const broker = new RabbitMQBroker(config.rabbitmq.url, logger);
+
+const notifier = new BrokerNotifier(broker);
+
+const repositoryModel = new RepositoryModel(knex);
+const subscriptionModel = new SubscriptionModel(knex, repositoryModel);
+const outboxModel = new OutboxModel(knex);
+const unitOfWork = new KnexUnitOfWork(knex);
+
 const subscriptionService = new SubscriptionService(
   subscriptionModel,
-  emailService,
+  outboxModel,
   githubService,
+  unitOfWork,
 );
 
 export { subscriptionModel, repositoryModel };
 
-export const scannerService = new ScannerService(
-  subscriptionModel,
-  repositoryModel,
-  emailService,
-  githubService,
+// Publishes outbox events (e.g. confirmation emails) to the broker out-of-band,
+// decoupling the subscribe request from broker availability.
+export const outboxRelay = new OutboxRelay(
+  outboxModel,
+  broker,
+  unitOfWork,
   logger,
+  config.outbox,
 );
 
 export const subscriptionController = new SubscriptionController(
   subscriptionService,
+);
+
+const releaseHandler = new InProcessReleaseHandler(
+  notifier,
+  repositoryModel,
+  logger,
+);
+
+export const scannerService = new ScannerService(
+  subscriptionModel,
+  githubService,
+  releaseHandler,
+  logger,
 );

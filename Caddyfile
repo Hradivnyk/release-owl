@@ -1,3 +1,23 @@
 {$DOMAIN} {
-    reverse_proxy app:3000
+    handle /grafana/* {
+        basic_auth {
+            {$GRAFANA_USER} {$GRAFANA_HASHED_PASSWORD}
+        }
+        reverse_proxy grafana:3000
+    }
+
+    handle /kibana/* {
+        basic_auth {
+            {$KIBANA_USER} {$KIBANA_HASHED_PASSWORD}
+        }
+        reverse_proxy kibana:5601
+    }
+
+    handle /metrics {
+        respond 404
+    }
+
+    handle {
+        reverse_proxy app:3000
+    }
 }

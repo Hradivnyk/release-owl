@@ -19,7 +19,7 @@ export default defineConfig({
     // UI tests: all routes are mocked via page.route() — safe to run in parallel.
     {
       name: 'ui',
-      testMatch: /home\.spec\.ts/,
+      testMatch: /(?<!\.e2e)\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
     // Full-stack E2E tests: hit the real DB, must run serially to avoid

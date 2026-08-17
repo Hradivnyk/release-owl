@@ -1,0 +1,38 @@
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      hints.enabled: true
+
+processors:
+  - add_docker_metadata:
+      host: 'unix:///var/run/docker.sock'
+  - decode_json_fields:
+      fields: [message]
+      target: ''
+      overwrite_keys: true
+      add_error_key: true # marks non-JSON lines with error.message; record is never dropped
+  - drop_fields:
+      fields:
+        - 'container.labels.com_docker_compose_*'
+        - 'container.labels.co_elastic_logs*'
+        - 'agent.ephemeral_id'
+        - 'agent.id'
+        - 'agent.name'
+        - 'agent.type'
+        - 'agent.version'
+        - 'ecs.version'
+        - 'log.offset'
+        - 'input.type'
+      ignore_missing: true
+
+output.elasticsearch:
+  hosts: ['elasticsearch:9200']
+  index: 'app-logs-%{+yyyy.MM.dd}'
+
+# Index template is managed externally by the es-init service
+# (see elasticsearch/index-template.json). Filebeat must not create or
+# overwrite it, otherwise the two definitions would clash.
+setup.template.enabled: false
+setup.ilm.enabled: false
+
+logging.level: warning

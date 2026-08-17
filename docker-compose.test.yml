@@ -9,7 +9,7 @@ services:
       - '5433:5432'
     restart: no
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U test']
+      test: ['CMD-SHELL', 'pg_isready -U test -d test_db']
       interval: 5s
       timeout: 5s
       retries: 5

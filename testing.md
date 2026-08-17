@@ -59,3 +59,20 @@ PLAYWRIGHT_SKIP_WEBSERVER=1 npm run test:e2e
 ```bash
 npm test
 ```
+
+---
+
+## Full CI check (quality + all tests)
+
+Runs the same checks as the CI pipeline: lint, format, typecheck, build, then all three test suites.
+Requires Docker. One-time setup: install Playwright browsers and copy `.env.test` (see sections above).
+
+```bash
+npm run ci
+```
+
+To run only the quality checks (no Docker needed):
+
+```bash
+npm run quality
+```
